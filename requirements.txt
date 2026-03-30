@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+openai
+python-multipart
+supabase
+python-dotenv
+requests
+aiohttp
+uuid
+fpdf2

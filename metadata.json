@@ -1,0 +1,5 @@
+{
+  "name": "Vani Vikas",
+  "description": "A voice-powered career progress tool for skilled workers.",
+  "requestFramePermissions": ["microphone"]
+}
