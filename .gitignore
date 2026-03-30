@@ -8,3 +8,4 @@ coverage/
 !.env.example
 resume_generator.db
 .venv/
+__pycache__/
