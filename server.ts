@@ -7,9 +7,72 @@ import OpenAI from 'openai';
 import { v4 as uuidv4 } from 'uuid';
 import PDFDocument from 'pdfkit';
 import Database from 'better-sqlite3';
+import { createClient } from '@supabase/supabase-js';
 
 const app = express();
 const PORT = 3000;
+
+// Initialize Supabase Client
+const supabaseUrl = process.env.SUPABASE_RL || '';
+const supabaseKey = process.env.SUPABASE_ANON_KEY || '';
+const supabaseClient = createClient(supabaseUrl, supabaseKey);
+
+// Helper function to save to Supabase side-by-side
+async function saveToSupabase(sessionId: string, resumeData: any) {
+  console.log(`\n[Supabase Debug] Attempting to save session: ${sessionId}`);
+  console.log(`[Supabase Debug] SUPABASE_RL exists: ${!!supabaseUrl}`);
+  console.log(`[Supabase Debug] SUPABASE_ANON_KEY exists: ${!!supabaseKey}`);
+
+  if (!supabaseUrl || !supabaseKey) {
+    console.warn('[Supabase Debug] Missing credentials, skipping save.');
+    return;
+  }
+  try {
+    const licenses = resumeData.licenses || [];
+    const identityDocs: string[] = [];
+    const certs: string[] = [];
+    
+    // Custom logic to split identity documents and certifications
+    const idKeywords = ['aadhaar', 'adhar', 'aadhar', 'pan', 'card', 'driving license', 'dl', 'voter', 'passport', 'id'];
+    
+    licenses.forEach((lic: string) => {
+      const lower = lic.toLowerCase();
+      if (idKeywords.some(kw => lower.includes(kw)) || lower.match(/\b(id|driving)\b/)) {
+        identityDocs.push(lic);
+      } else {
+        certs.push(lic);
+      }
+    });
+
+    console.log(`[Supabase Debug] Parsed Data -> Name: ${resumeData.fullName}, Job: ${resumeData.jobTitle}`);
+    console.log(`[Supabase Debug] Languages:`, resumeData.languages);
+    console.log(`[Supabase Debug] Identity Docs:`, identityDocs);
+    console.log(`[Supabase Debug] Certifications:`, certs);
+
+    const payload = {
+      session_id: sessionId,
+      full_name: resumeData.fullName || 'Unknown',
+      phone_number: resumeData.phoneNumber || 'Unknown',
+      occupation: resumeData.jobTitle || 'Unknown',
+      languages_spoken: resumeData.languages || [],
+      identity_documents: identityDocs,
+      certifications: certs
+    };
+
+    console.log(`[Supabase Debug] Executing Insert with payload:`, JSON.stringify(payload, null, 2));
+
+    const { data, error } = await supabaseClient.from('candidate_profiles').insert([payload]).select();
+    
+    if (error) {
+      console.error('[Supabase Debug] Insert Error Details:', JSON.stringify(error, null, 2));
+      throw error;
+    }
+
+    console.log('[Supabase Debug] Successfully saved candidate profile side-by-side. Inserted Data:', data);
+  } catch (error) {
+    console.error('[Supabase Debug] Caught exception during save sequence:', error);
+  }
+}
 
 // Initialize Database
 const db = new Database('resume_generator.db');
@@ -306,6 +369,7 @@ app.post('/api/sessions/:id/chat', upload.single('audio'), async (req, res) => {
         if (call.function.name === 'finalizeResume') {
           const resumeData = JSON.parse(call.function.arguments);
           db.prepare('UPDATE sessions SET status = ?, resume_data = ? WHERE id = ?').run('completed', JSON.stringify(resumeData), sessionId);
+          saveToSupabase(sessionId, resumeData); // Push to Supabase side-by-side
           const finalMsg = 'Great! I have all the information I need. I am generating your resume now.';
           db.prepare('INSERT INTO messages (id, session_id, role, content) VALUES (?, ?, ?, ?)').run(uuidv4(), sessionId, 'model', finalMsg);
           
@@ -394,6 +458,7 @@ app.post('/api/sessions/:id/complete', (req, res) => {
   const sessionId = req.params.id;
   const resumeData = req.body.resumeData;
   db.prepare('UPDATE sessions SET status = ?, resume_data = ? WHERE id = ?').run('completed', JSON.stringify(resumeData), sessionId);
+  saveToSupabase(sessionId, resumeData); // Push to Supabase side-by-side
   res.json({ success: true });
 });
 

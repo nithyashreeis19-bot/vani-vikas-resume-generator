@@ -101,11 +101,13 @@ export default function App() {
         formData.append('language', language);
         
         try {
+          console.log(`[Frontend Debug] Sending audio array to /api/sessions/${sessionId}/chat...`);
           const res = await fetch(`/api/sessions/${sessionId}/chat`, {
             method: 'POST',
             body: formData
           });
           const data = await res.json();
+          console.log(`[Frontend Debug] /chat backend response data:`, data);
           
           if (data.userText) {
             setMessages(prev => [...prev, { role: 'user', content: data.userText }]);
@@ -118,6 +120,7 @@ export default function App() {
           }
           
           if (data.status === 'completed') {
+            console.log('[Frontend Debug] Chat response status is COMPLETED. Received resumeData:', data.resumeData);
             setStatus('completed');
             setResumeData(data.resumeData);
           }
